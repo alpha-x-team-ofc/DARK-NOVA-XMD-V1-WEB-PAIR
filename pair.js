@@ -1,7 +1,8 @@
 const express = require("express");
 const fs = require("fs");
 const { exec } = require("child_process");
-let router = express.Router();
+const path = require("path");
+const router = express.Router();
 const pino = require("pino");
 const {
   default: makeWASocket,
@@ -13,17 +14,30 @@ const {
 } = require("@whiskeysockets/baileys");
 const { upload } = require("./mega");
 
-function removeFile(FilePath) {
-  if (!fs.existsSync(FilePath)) return false;
-  fs.rmSync(FilePath, { recursive: true, force: true });
+function removeFile(filePath) {
+  if (!fs.existsSync(filePath)) return false;
+  try {
+    fs.rmSync(filePath, { recursive: true, force: true });
+    return true;
+  } catch (err) {
+    console.error(`Error removing file ${filePath}:`, err);
+    return false;
+  }
 }
 
 router.get("/", async (req, res) => {
-  let num = req.query.number;
-  async function RobinPair() {
-    const { state, saveCreds } = await useMultiFileAuthState(`./session`);
+  const num = req.query.number?.replace(/[^0-9]/g, "");
+  
+  if (!num || num.length < 11) {
+    return res.status(400).json({ error: "Invalid phone number" });
+  }
+
+  async function initPairing() {
+    const sessionDir = path.join(__dirname, "session");
+    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+    
     try {
-      let RobinPairWeb = makeWASocket({
+      const socket = makeWASocket({
         auth: {
           creds: state.creds,
           keys: makeCacheableSignalKeyStore(
@@ -36,103 +50,92 @@ router.get("/", async (req, res) => {
         browser: Browsers.macOS("Safari"),
       });
 
-      if (!RobinPairWeb.authState.creds.registered) {
+      if (!socket.authState.creds.registered) {
         await delay(1500);
-        num = num.replace(/[^0-9]/g, "");
-        const code = await RobinPairWeb.requestPairingCode(num);
+        const code = await socket.requestPairingCode(num);
         if (!res.headersSent) {
-          await res.send({ code });
+          res.json({ code });
         }
       }
 
-      RobinPairWeb.ev.on("creds.update", saveCreds);
-      RobinPairWeb.ev.on("connection.update", async (s) => {
-        const { connection, lastDisconnect } = s;
+      socket.ev.on("creds.update", saveCreds);
+      socket.ev.on("connection.update", async (update) => {
+        const { connection, lastDisconnect } = update;
+        
         if (connection === "open") {
           try {
             await delay(10000);
-            const sessionPrabath = fs.readFileSync("./session/creds.json");
-
-            const auth_path = "./session/";
-            const user_jid = jidNormalizedUser(RobinPairWeb.user.id);
-
-            function randomMegaId(length = 6, numberLength = 4) {
-              const characters =
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-              let result = "";
-              for (let i = 0; i < length; i++) {
-                result += characters.charAt(
-                  Math.floor(Math.random() * characters.length)
-                );
-              }
-              const number = Math.floor(
-                Math.random() * Math.pow(10, numberLength)
-              );
-              return `${result}${number}`;
+            const credsPath = path.join(sessionDir, "creds.json");
+            
+            if (!fs.existsSync(credsPath)) {
+              throw new Error("Credentials file not found");
             }
 
-            const mega_url = await upload(
-              fs.createReadStream(auth_path + "creds.json"),
-              `${randomMegaId()}.json`
+            const megaUrl = await upload(
+              fs.createReadStream(credsPath),
+              `DARK-NOVA-SESSION-${Date.now()}.json`
             );
 
-            const string_session = mega_url.replace(
-              "https://mega.nz/file/",
-              ""
-            );
+            const stringSession = megaUrl.replace("https://mega.nz/file/", "");
+            const userJid = jidNormalizedUser(socket.user.id);
+            const message = `
+*🤖 DARK-NOVA-XMD [The powerful WA BOT]*
 
-            const sid = `* 🤖DARK-NOVA-XMD [The powerful WA BOT]*\n\n👉 ${string_session} 👈\n\n*This is the your Session ID, copy this id and paste into config.js file*\n\n*ᴄʀᴇᴀᴛᴏʀ=👨🏻‍💻 ᴍʀ ᴅᴜʟɪɴᴀ ɴᴇᴛʜᴍɪʀᴀ ᴀɴᴅ ꜱʜᴇʀᴏɴ ᴇʟɪᴊᴀʜ ⚖*\n\n**\n\n*You can join my whatsapp channel*\n\n*https://whatsapp.com/channel/0029Vb9yA9K9sBI799oc7U2T*\n\n*> 𝐏𝐨𝐰𝐞𝐫𝐞𝐝 𝐁𝐲 - : 𝕎ℍ𝕀𝕋𝔼 𝔸𝕃ℙℍ𝔸 𝕎𝕆𝕃𝔽 𝕏 𝕋𝔼𝔸𝕄 *`;
-            const mg = `🛑 *Do not share this code to anyone* 🛑`;
-            const dt = await RobinPairWeb.sendMessage(user_jid, {
-              image: {
-                url: "https://github.com/dula9x/DARK-NOVA-XMD-V1-WEB-PAIR/blob/main/images/WhatsApp%20Image%202025-08-15%20at%2017.22.03_c520eb7b.jpg?raw=true",
-              },
-              caption: sid,
+👉 ${stringSession} 👈
+
+*This is your Session ID, copy this id and paste into config.js file*
+
+*ᴄʀᴇᴀᴛᴏʀ=👨🏻‍💻 ᴍʀ ᴅᴜʟɪɴᴀ ɴᴇᴛʜᴍɪʀᴀ ᴀɴᴅ ꜱʜᴇʀᴏɴ ᴇʟɪᴊᴀʜ ⚖*
+
+*You can join my whatsapp channel*
+https://whatsapp.com/channel/0029Vb9yA9K9sBI799oc7U2T
+
+*> 𝐏𝐨𝐰𝐞𝐫𝐞𝐝 𝐁𝐲 - : 𝕎ℍ𝕀𝕋𝔼 𝔸𝕃ℙℍ𝔸 𝕎𝕆𝕃𝔽 𝕏 𝕋𝔼𝔸𝕄 *
+            `;
+
+            await socket.sendMessage(userJid, {
+              image: { url: "https://github.com/dula9x/DARK-NOVA-XMD-V1-WEB-PAIR/raw/main/images/WhatsApp%20Image%202025-08-15%20at%2017.22.03_c520eb7b.jpg" },
+              caption: message
             });
-            const msg = await RobinPairWeb.sendMessage(user_jid, {
-              text: string_session,
+
+            await socket.sendMessage(userJid, {
+              text: "🛑 *Do not share this code with anyone* 🛑"
             });
-            const msg1 = await RobinPairWeb.sendMessage(user_jid, { text: mg });
-          } catch (e) {
-            exec("pm2 restart prabath");
+
+          } catch (err) {
+            console.error("Error in session handling:", err);
+            exec("pm2 restart DARK-NOVA-XMD");
+          } finally {
+            removeFile(sessionDir);
+            process.exit(0);
           }
-
-          await delay(100);
-          return await removeFile("./session");
-          process.exit(0);
-        } else if (
-          connection === "close" &&
-          lastDisconnect &&
-          lastDisconnect.error &&
-          lastDisconnect.error.output.statusCode !== 401
-        ) {
-          await delay(10000);
-          RobinPair();
+        } else if (connection === "close" && lastDisconnect?.error) {
+          if (lastDisconnect.error.output.statusCode !== 401) {
+            await delay(10000);
+            initPairing();
+          }
         }
       });
     } catch (err) {
-      exec("pm2 restart Robin-md");
-      console.log("service restarted");
-      RobinPair();
-      await removeFile("./session");
+      console.error("Pairing error:", err);
+      exec("pm2 restart DARK-NOVA-XMD");
+      removeFile(path.join(__dirname, "session"));
       if (!res.headersSent) {
-        await res.send({ code: "Service Unavailable" });
+        res.status(503).json({ code: "Service Unavailable" });
       }
     }
   }
-  return await RobinPair();
+
+  await initPairing();
 });
 
-process.on("uncaughtException", function (err) {
-  console.log("Caught exception: " + err);
-  exec("pm2 restart Robin");
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+  exec("pm2 restart DARK-NOVA-XMD");
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
 module.exports = router;
-
-
-
-
-
-
-
