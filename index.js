@@ -1,41 +1,20 @@
 const express = require("express");
 const app = express();
-const path = require("path");
+__path = process.cwd();
 const bodyParser = require("body-parser");
 const PORT = process.env.PORT || 8000;
-const code = require("./pair");
-
-// Increase event emitter limit
+let code = require("./pair");
 require("events").EventEmitter.defaultMaxListeners = 500;
+app.use("/code", code);
 
-// Middleware
+app.use("/", async (req, res, next) => {
+  res.sendFile(__path + "/pair.html");
+});
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-
-// Routes
-app.use("/code", code);
-app.use("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "pair.html"));
-});
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Something broke!');
-});
-
-// Server start
-const server = app.listen(PORT, () => {
-  console.log(`⏩ Server running on http://localhost:${PORT}`);
-});
-
-// Handle server errors
-server.on('error', (error) => {
-  if (error.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use`);
-    process.exit(1);
-  }
-  throw error;
+app.listen(PORT, () => {
+  console.log(`⏩ Server running on http://localhost:` + PORT);
 });
 
 module.exports = app;
