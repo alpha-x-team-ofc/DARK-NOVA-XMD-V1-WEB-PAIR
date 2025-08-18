@@ -1,14 +1,12 @@
 {
   "description": "session name",
-  "main": "./malvin.js",
+  "main": "malvin.js",
   "type": "commonjs",
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
-    "start": "pm2 start malvin.js --deep-monitoring --attach --name DARK-NOVA-XMD",
-    "stop": "pm2 stop DARK-NOVA-XMD",
-    "restart": "pm2 restart DARK-NOVA-XMD"
+    "start": "node malvin.js"
   },
   "author": "DARK-NOVA-XMD",
   "license": "GPL-3.0 license",
@@ -22,6 +20,7 @@
     "phone": "^3.1.30",
     "pino": "^8.15.1",
     "pm2": "^5.3.1",
-    "qrcode": "^1.5.3"
+    "qrcode": "^1.5.3",
+    "fs": "0.0.1-security"
   }
 }
